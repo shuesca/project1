@@ -109,11 +109,28 @@ const SceneContent = ({
   </div>
 );
 
-const AutoVideo = ({ src, className, crossOrigin }) => {
+const AutoVideo = ({ src, className, crossOrigin, onReady }) => {
   const ref = useRef(null);
   useEffect(() => {
-    if (ref.current) ref.current.play().catch(() => {});
-  }, [src]);
+    const video = ref.current;
+    if (!video) return undefined;
+
+    const markReady = () => onReady?.();
+    video.addEventListener("loadeddata", markReady);
+    video.addEventListener("canplay", markReady);
+    video.addEventListener("playing", markReady);
+    video.addEventListener("timeupdate", markReady, { once: true });
+
+    if (video.readyState >= 3) markReady();
+    video.play().catch(() => {});
+
+    return () => {
+      video.removeEventListener("loadeddata", markReady);
+      video.removeEventListener("canplay", markReady);
+      video.removeEventListener("playing", markReady);
+      video.removeEventListener("timeupdate", markReady);
+    };
+  }, [onReady, src]);
   return (
     <video
       ref={ref}
@@ -126,6 +143,133 @@ const AutoVideo = ({ src, className, crossOrigin }) => {
       crossOrigin={crossOrigin}
       className={className}
     />
+  );
+};
+
+const FirstVisitLoader = ({ heroVideoReady, videoAssets, onComplete }) => {
+  const [progress, setProgress] = useState(8);
+  const [isLeaving, setIsLeaving] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    const minDuration = prefersReducedMotion ? 900 : 3200;
+    const maxDuration = prefersReducedMotion ? 4000 : 22000;
+    const startedAt = performance.now();
+
+    const progressTimer = window.setInterval(() => {
+      setProgress((current) => {
+        if (current >= 96) return current;
+        const next = current + (prefersReducedMotion ? 8 : Math.random() * 5 + 1.5);
+        return Math.min(96, Math.round(next));
+      });
+    }, prefersReducedMotion ? 160 : 260);
+
+    const preloadVideo = (src) =>
+      new Promise((resolve) => {
+        const video = document.createElement("video");
+        const done = () => resolve(src);
+        video.preload = "auto";
+        video.muted = true;
+        video.playsInline = true;
+        video.crossOrigin = "anonymous";
+        video.onloadeddata = done;
+        video.oncanplaythrough = done;
+        video.onerror = done;
+        video.src = src;
+        video.load();
+      });
+
+    const maxTimer = window.setTimeout(() => {
+      const elapsed = performance.now() - startedAt;
+      const remaining = Math.max(0, minDuration - elapsed);
+      window.setTimeout(() => {
+        if (!isMounted) return;
+        setProgress(100);
+        setIsLeaving(true);
+        window.setTimeout(onComplete, prefersReducedMotion ? 180 : 650);
+      }, remaining);
+    }, maxDuration);
+
+    // Warm the rest of the reel without blocking the first frame.
+    videoAssets.slice(1).forEach((src) => preloadVideo(src));
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(progressTimer);
+      window.clearTimeout(maxTimer);
+    };
+  }, [onComplete, videoAssets]);
+
+  useEffect(() => {
+    if (!heroVideoReady) return undefined;
+
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const exitTimer = window.setTimeout(() => {
+      setProgress(100);
+      setIsLeaving(true);
+      window.setTimeout(onComplete, prefersReducedMotion ? 180 : 650);
+    }, prefersReducedMotion ? 200 : 750);
+
+    return () => window.clearTimeout(exitTimer);
+  }, [heroVideoReady, onComplete]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 1 }}
+      animate={{ opacity: isLeaving ? 0 : 1 }}
+      transition={{ duration: 0.55, ease: "easeOut" }}
+      className="fixed inset-0 z-[999] flex items-center justify-center overflow-hidden bg-black text-white"
+    >
+      <div className="absolute inset-0 opacity-60">
+        <div className="absolute left-1/2 top-1/2 h-[46rem] w-[46rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500/20 blur-3xl" />
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 16, repeat: Infinity, ease: "linear" }}
+          className="absolute left-1/2 top-1/2 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 border-t-blue-300/70"
+        />
+        <motion.div
+          animate={{ rotate: -360 }}
+          transition={{ duration: 22, repeat: Infinity, ease: "linear" }}
+          className="absolute left-1/2 top-1/2 h-[24rem] w-[24rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 border-b-cyan-300/60"
+        />
+      </div>
+
+      <div className="relative z-10 w-[min(34rem,calc(100vw-3rem))] rounded-3xl border border-white/15 bg-white/[0.06] p-7 shadow-2xl backdrop-blur-2xl">
+        <div className="mb-8 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.55)]" />
+            <div>
+              <p className="text-sm font-semibold tracking-tight">Nitrogen UI & WaaS</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-white/45">
+                Initializing experience
+              </p>
+            </div>
+          </div>
+          <span className="font-mono text-sm text-white/70">
+            {Math.round(progress).toString().padStart(2, "0")}%
+          </span>
+        </div>
+
+        <div className="mb-5 h-2 overflow-hidden rounded-full bg-white/10">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-blue-400 via-cyan-200 to-white shadow-[0_0_22px_rgba(125,211,252,0.75)]"
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+          />
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-white/50">
+          <span>Preloading video field</span>
+          <span>Stabilizing motion layers</span>
+        </div>
+      </div>
+    </motion.div>
   );
 };
 
@@ -646,6 +790,8 @@ const WaasSiteFooter = () => (
 export default function HeroScrollPage() {
   const navigate = useNavigate();
   const launchTransition = useLaunchTransition();
+  const [showIntroLoader, setShowIntroLoader] = useState(true);
+  const [heroVideoReady, setHeroVideoReady] = useState(false);
   const [nitrogeDismissed, setNitrogeDismissed] = useState(false);
   const containerRef = useRef(null);
   const { scrollYProgress } = useScroll({
@@ -659,9 +805,9 @@ export default function HeroScrollPage() {
   });
 
   const videos = [
-    mediaUrl("/Sphere.mp4"),
-    mediaUrl("/JellyFish.mp4"),
     mediaUrl("/Fluid.mp4"),
+    mediaUrl("/JellyFish.mp4"),
+    mediaUrl("/Sphere.mp4"),
     mediaUrl("/drone.mp4"),
   ];
 
@@ -675,6 +821,14 @@ export default function HeroScrollPage() {
 
   return (
     <main className="bg-black font-inter">
+      {showIntroLoader && (
+        <FirstVisitLoader
+          heroVideoReady={heroVideoReady}
+          videoAssets={[...videos, waterVideo]}
+          onComplete={() => setShowIntroLoader(false)}
+        />
+      )}
+
       {/* ── 4-scene sticky scroll ── */}
       <div ref={containerRef} className="relative h-[400vh]">
         <div className="sticky top-0 h-screen w-full overflow-hidden bg-black">
@@ -683,6 +837,7 @@ export default function HeroScrollPage() {
             <AutoVideo
               src={videos[0]}
               className="absolute inset-0 w-full h-full object-cover"
+              onReady={() => setHeroVideoReady(true)}
             />
             <motion.div
               style={{ opacity: scene1Opacity, y: scene1Y }}
