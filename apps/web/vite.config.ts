@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { cloudflareDevProxy } from '@react-router/dev/vite/cloudflare';
 import { reactRouter } from '@react-router/dev/vite';
 import { reactRouterHonoServer } from 'react-router-hono-server/dev';
 import { defineConfig } from 'vite';
@@ -33,11 +34,12 @@ export default defineConfig({
   },
   logLevel: 'info',
   plugins: [
+    cloudflareDevProxy(),
     nextPublicProcessEnv(),
     restartEnvFileChange(),
     reactRouterHonoServer({
       serverEntryPoint: './__create/index.ts',
-      runtime: 'node',
+      runtime: 'cloudflare',
     }),
     babel({
       include: ['src/**/*.{js,jsx,ts,tsx}'], // or RegExp: /src\/.*\.[tj]sx?$/

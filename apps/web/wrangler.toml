@@ -1,0 +1,12 @@
+# Cloudflare Workers — run from apps/web: `npm run build` then `wrangler deploy`
+# Secrets: `wrangler secret put DATABASE_URL` (and AUTH_SECRET for production).
+
+name = "project1-web"
+main = "build/server/index.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "build/client"
+binding = "ASSETS"
+experimental_serve_directly = false

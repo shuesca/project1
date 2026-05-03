@@ -1,53 +1,61 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-import nodeConsole from 'node:console';
 import { skipCSRFCheck } from '@auth/core';
 import Credentials from '@auth/core/providers/credentials';
 import { authHandler, initAuthConfig } from '@hono/auth-js';
 import { Pool, neonConfig } from '@neondatabase/serverless';
-import { hash, verify } from 'argon2';
+import bcrypt from 'bcryptjs';
 import { Hono } from 'hono';
 import { contextStorage, getContext } from 'hono/context-storage';
 import { cors } from 'hono/cors';
 import { proxy } from 'hono/proxy';
 import { bodyLimit } from 'hono/body-limit';
 import { requestId } from 'hono/request-id';
-import { createHonoServer } from 'react-router-hono-server/node';
+import { createHonoServer } from 'react-router-hono-server/cloudflare';
 import { serializeError } from 'serialize-error';
-import ws from 'ws';
 import NeonAdapter from './adapter';
 import { getHTMLForErrorPage } from './get-html-for-error-page';
 import { isAuthAction } from './is-auth-action';
 import { API_BASENAME, api } from './route-builder';
-neonConfig.webSocketConstructor = ws;
 
-const als = new AsyncLocalStorage<{ requestId: string }>();
+neonConfig.webSocketConstructor = globalThis.WebSocket;
 
-for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
-  const original = nodeConsole[method].bind(console);
+/** Cloudflare bindings + local dev fallbacks (see wrangler.toml / .env). */
+export type WorkerBindings = {
+  ASSETS?: { fetch: typeof fetch };
+  AUTH_SECRET?: string;
+  DATABASE_URL?: string;
+  CORS_ORIGINS?: string;
+};
 
-  console[method] = (...args: unknown[]) => {
-    const requestId = als.getStore()?.requestId;
-    if (requestId) {
-      original(`[traceId:${requestId}]`, ...args);
-    } else {
-      original(...args);
-    }
-  };
+let poolSingleton: Pool | null = null;
+let poolForUrl: string | null = null;
+
+function getPool(databaseUrl: string): Pool {
+  if (poolSingleton && poolForUrl === databaseUrl) return poolSingleton;
+  poolSingleton = new Pool({ connectionString: databaseUrl });
+  poolForUrl = databaseUrl;
+  return poolSingleton;
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-const adapter = NeonAdapter(pool);
+function getDatabaseUrl(): string | undefined {
+  try {
+    const c = getContext<{ Bindings: WorkerBindings }>();
+    return c.env.DATABASE_URL ?? process.env.DATABASE_URL;
+  } catch {
+    return process.env.DATABASE_URL;
+  }
+}
 
-const app = new Hono();
+function getAdapter() {
+  const url = getDatabaseUrl();
+  if (!url) {
+    throw new Error('DATABASE_URL is not set (bindings or process.env)');
+  }
+  return NeonAdapter(getPool(url));
+}
+
+const app = new Hono<{ Bindings: WorkerBindings }>();
 
 app.use('*', requestId());
-
-app.use('*', (c, next) => {
-  const requestId = c.get('requestId');
-  return als.run({ requestId }, () => next());
-});
 
 app.use(contextStorage());
 
@@ -58,77 +66,80 @@ app.onError((err, c) => {
         error: 'An error occurred in your app',
         details: serializeError(err),
       },
-      500
+      500,
     );
   }
   return c.html(getHTMLForErrorPage(err), 200);
 });
 
-if (process.env.CORS_ORIGINS) {
-  app.use(
-    '/*',
-    cors({
-      origin: process.env.CORS_ORIGINS.split(',').map((origin) => origin.trim()),
-    })
-  );
-}
+app.use('/*', async (c, next) => {
+  const origins = c.env.CORS_ORIGINS ?? process.env.CORS_ORIGINS;
+  if (origins) {
+    return cors({
+      origin: origins.split(',').map((o) => o.trim()),
+    })(c, next);
+  }
+  return next();
+});
+
 for (const method of ['post', 'put', 'patch'] as const) {
   app[method](
     '*',
     bodyLimit({
-      maxSize: 4.5 * 1024 * 1024, // 4.5mb to match vercel limit
+      maxSize: 4.5 * 1024 * 1024,
       onError: (c) => {
         return c.json({ error: 'Body size limit exceeded' }, 413);
       },
-    })
+    }),
   );
 }
 
-if (process.env.AUTH_SECRET) {
-  app.use(
-    '*',
-    initAuthConfig((c) => ({
-      secret: c.env.AUTH_SECRET,
-      pages: {
-        signIn: '/account/signin',
-        signOut: '/account/logout',
+app.use(
+  '*',
+  initAuthConfig((c) => ({
+    secret: String(
+      c.env.AUTH_SECRET ??
+        process.env.AUTH_SECRET ??
+        (import.meta.env.DEV ? 'dev-insecure-placeholder' : ''),
+    ),
+    pages: {
+      signIn: '/account/signin',
+      signOut: '/account/logout',
+    },
+    skipCSRFCheck,
+    session: {
+      strategy: 'jwt',
+    },
+    callbacks: {
+      session({ session, token }) {
+        if (token.sub) {
+          session.user.id = token.sub;
+        }
+        return session;
       },
-      skipCSRFCheck,
-      session: {
-        strategy: 'jwt',
-      },
-      callbacks: {
-        session({ session, token }) {
-          if (token.sub) {
-            session.user.id = token.sub;
-          }
-          return session;
+    },
+    cookies: {
+      csrfToken: {
+        options: {
+          secure: true,
+          sameSite: 'none',
         },
       },
-      cookies: {
-        csrfToken: {
-          options: {
-            secure: true,
-            sameSite: 'none',
-          },
-        },
-        sessionToken: {
-          options: {
-            secure: true,
-            sameSite: 'none',
-          },
-        },
-        callbackUrl: {
-          options: {
-            secure: true,
-            sameSite: 'none',
-          },
+      sessionToken: {
+        options: {
+          secure: true,
+          sameSite: 'none',
         },
       },
-      providers: [
-        // Dev-only provider for simulated social sign-in (Google, Facebook, etc.)
-        // Creates or finds a user by email without requiring a password.
-        ...(process.env.NEXT_PUBLIC_CREATE_ENV === 'DEVELOPMENT'
+      callbackUrl: {
+        options: {
+          secure: true,
+          sameSite: 'none',
+        },
+      },
+    },
+    providers: [
+        ...(import.meta.env.DEV
           ? [
               Credentials({
                 id: 'dev-social',
@@ -142,6 +153,7 @@ if (process.env.AUTH_SECRET) {
                   const { email, name, provider } = credentials;
                   if (!email || typeof email !== 'string') return null;
 
+                  const adapter = getAdapter();
                   const existing = await adapter.getUserByEmail(email);
                   if (existing) return existing;
 
@@ -191,25 +203,25 @@ if (process.env.AUTH_SECRET) {
               return null;
             }
 
-            // logic to verify if user exists
+            const adapter = getAdapter();
             const user = await adapter.getUserByEmail(email);
             if (!user) {
               return null;
             }
             const matchingAccount = user.accounts.find(
-              (account) => account.provider === 'credentials'
+              (account) => account.provider === 'credentials',
             );
             const accountPassword = matchingAccount?.password;
             if (!accountPassword) {
               return null;
             }
 
-            const isValid = await verify(accountPassword, password);
+            // bcrypt (Workers-safe). Passwords hashed with argon2 must be reset.
+            const isValid = bcrypt.compareSync(password, accountPassword);
             if (!isValid) {
               return null;
             }
 
-            // return user object with the their profile data
             return user;
           },
         }),
@@ -237,7 +249,7 @@ if (process.env.AUTH_SECRET) {
               return null;
             }
 
-            // logic to verify if user exists
+            const adapter = getAdapter();
             const user = await adapter.getUserByEmail(email);
             if (!user) {
               const newUser = await adapter.createUser({
@@ -248,7 +260,7 @@ if (process.env.AUTH_SECRET) {
               });
               await adapter.linkAccount({
                 extraData: {
-                  password: await hash(password),
+                  password: bcrypt.hashSync(password, 10),
                 },
                 type: 'credentials',
                 userId: newUser.id,
@@ -260,27 +272,32 @@ if (process.env.AUTH_SECRET) {
             return null;
           },
         }),
-      ],
-    }))
-  );
-}
-app.all('/integrations/:path{.+}', async (c, next) => {
+    ],
+  }))
+);
+
+app.all('/integrations/:path{.+}', async (c) => {
   const queryParams = c.req.query();
-  const url = `${process.env.NEXT_PUBLIC_CREATE_BASE_URL ?? 'https://www.create.xyz'}/integrations/${c.req.param('path')}${Object.keys(queryParams).length > 0 ? `?${new URLSearchParams(queryParams).toString()}` : ''}`;
+  const url = `${import.meta.env.NEXT_PUBLIC_CREATE_BASE_URL ?? process.env.NEXT_PUBLIC_CREATE_BASE_URL ?? 'https://www.create.xyz'}/integrations/${c.req.param('path')}${Object.keys(queryParams).length > 0 ? `?${new URLSearchParams(queryParams).toString()}` : ''}`;
+
+  const host = import.meta.env.NEXT_PUBLIC_CREATE_HOST ?? process.env.NEXT_PUBLIC_CREATE_HOST;
+  const projectGroupId =
+    import.meta.env.NEXT_PUBLIC_PROJECT_GROUP_ID ?? process.env.NEXT_PUBLIC_PROJECT_GROUP_ID;
 
   return proxy(url, {
     method: c.req.method,
     body: c.req.raw.body ?? null,
-    // @ts-expect-error -- duplex is accepted by the runtime even though the
-    // type declarations don't include it; required for streaming integrations
-    duplex: 'half',
     redirect: 'manual',
     headers: {
       ...c.req.header(),
-      'X-Forwarded-For': process.env.NEXT_PUBLIC_CREATE_HOST,
-      'x-createxyz-host': process.env.NEXT_PUBLIC_CREATE_HOST,
-      Host: process.env.NEXT_PUBLIC_CREATE_HOST,
-      'x-createxyz-project-group-id': process.env.NEXT_PUBLIC_PROJECT_GROUP_ID,
+      ...(host
+        ? {
+            'X-Forwarded-For': host,
+            'x-createxyz-host': host,
+            Host: host,
+          }
+        : {}),
+      ...(projectGroupId ? { 'x-createxyz-project-group-id': projectGroupId } : {}),
     },
   });
 });
