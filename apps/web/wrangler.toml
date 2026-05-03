@@ -9,4 +9,7 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = "build/client"
 binding = "ASSETS"
-experimental_serve_directly = false
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "project1-web-media"

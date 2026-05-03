@@ -4,11 +4,12 @@
 	"type": "module",
 	"scripts": {
 		"build": "react-router build",
-		"deploy": "npm run build && wrangler deploy",
+		"deploy": "npm run build:cloudflare && wrangler deploy",
 		"dev": "react-router dev",
-		"preview": "wrangler dev",
+		"preview": "npm run build:cloudflare && wrangler dev",
 		"sync:media": "bash ../../scripts/sync-media.sh",
-		"typecheck": "react-router typegen && tsc --noEmit"
+		"typecheck": "react-router typegen && tsc --noEmit",
+		"build:cloudflare": "npm run build && node scripts/strip-cloudflare-assets.mjs"
 	},
 	"dependencies": {
 		"@auth/core": "^0.37.2",
@@ -80,11 +81,11 @@
 		"@tailwindcss/vite": "^4.1.4",
 		"@testing-library/jest-dom": "^6.6.4",
 		"@testing-library/react": "^16.3.0",
+		"@types/bcryptjs": "^2.4.6",
 		"@types/micromatch": "^4.0.9",
 		"@types/node": "^20",
-		"@types/react": "^18.3.1",
-		"@types/react-dom": "^18.3.1",
-		"@types/bcryptjs": "^2.4.6",
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0",
 		"autoprefixer": "^10.4.21",
 		"babel-plugin-react-require": "^4.0.3",
 		"fast-glob": "^3.3.3",

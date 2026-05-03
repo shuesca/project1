@@ -21,6 +21,7 @@ neonConfig.webSocketConstructor = globalThis.WebSocket;
 /** Cloudflare bindings + local dev fallbacks (see wrangler.toml / .env). */
 export type WorkerBindings = {
   ASSETS?: { fetch: typeof fetch };
+  MEDIA?: R2Bucket;
   AUTH_SECRET?: string;
   DATABASE_URL?: string;
   CORS_ORIGINS?: string;
@@ -54,10 +55,63 @@ function getAdapter() {
 }
 
 const app = new Hono<{ Bindings: WorkerBindings }>();
+const R2_VIDEO_FILES = new Set([
+  'Fluid.mp4',
+  'JellyFish.mp4',
+  'Ocean.mp4',
+  'Sphere.mp4',
+  'drone.mp4',
+]);
 
 app.use('*', requestId());
 
 app.use(contextStorage());
+
+app.get('/:filename', async (c, next) => {
+  const filename = c.req.param('filename');
+  if (!R2_VIDEO_FILES.has(filename)) return next();
+
+  const bucket = c.env.MEDIA;
+  if (!bucket) return next();
+
+  const range = c.req.header('range');
+  const object = await bucket.get(filename, range ? { range: parseRange(range) } : undefined);
+  if (!object?.body) return next();
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set('etag', object.httpEtag);
+  headers.set('accept-ranges', 'bytes');
+  headers.set('cache-control', 'public, max-age=31536000, immutable');
+
+  if (range) {
+    const parsed = parseRange(range);
+    const offset = parsed.offset ?? 0;
+    const length = parsed.length ?? Math.max(object.size - offset, 0);
+    const end = Math.min(offset + length - 1, object.size - 1);
+    headers.set('content-range', `bytes ${offset}-${end}/${object.size}`);
+    headers.set('content-length', String(Math.max(end - offset + 1, 0)));
+    return new Response(object.body, { status: 206, headers });
+  }
+
+  headers.set('content-length', String(object.size));
+  return new Response(object.body, { headers });
+});
+
+function parseRange(range: string): { offset?: number; length?: number; suffix?: number } {
+  const match = range.match(/^bytes=(\d*)-(\d*)$/);
+  if (!match) return {};
+
+  const [, start, end] = match;
+  if (!start && end) return { suffix: Number(end) };
+  if (!start) return {};
+
+  const offset = Number(start);
+  if (!end) return { offset };
+
+  const endNumber = Number(end);
+  return { offset, length: Math.max(endNumber - offset + 1, 0) };
+}
 
 app.onError((err, c) => {
   if (c.req.method !== 'GET') {

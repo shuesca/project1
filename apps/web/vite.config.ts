@@ -33,6 +33,9 @@ export default defineConfig({
     ],
   },
   logLevel: 'info',
+  build: {
+    target: 'esnext',
+  },
   plugins: [
     cloudflareDevProxy(),
     nextPublicProcessEnv(),

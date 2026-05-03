@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useLaunchTransition } from "./LaunchTransitionProvider";
+import { mediaUrl } from "@/app/media";
 import {
   animate,
   motion,
@@ -658,13 +659,13 @@ export default function HeroScrollPage() {
   });
 
   const videos = [
-    "/Sphere.mp4",
-    "/JellyFish.mp4",
-    "/Fluid.mp4",
-    "/drone.mp4",
+    mediaUrl("/Sphere.mp4"),
+    mediaUrl("/JellyFish.mp4"),
+    mediaUrl("/Fluid.mp4"),
+    mediaUrl("/drone.mp4"),
   ];
 
-  const waterVideo = "/Ocean.mp4";
+  const waterVideo = mediaUrl("/Ocean.mp4");
 
   const scene1Opacity = useTransform(smoothProgress, [0, 0.18], [1, 0]);
   const scene1Y = useTransform(smoothProgress, [0, 0.18], [0, -40]);

@@ -3,9 +3,10 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { ArrowLeft, FileCode2 } from "lucide-react";
+import { mediaUrl } from "@/app/media";
 
 /** Third clip in the hero reel (`page.jsx` `videos[2]`). */
-const DOC_BG_VIDEO = "/Fluid.mp4";
+const DOC_BG_VIDEO = mediaUrl("/Fluid.mp4");
 
 export default function DocumentationPage() {
   const videoRef = useRef(null);

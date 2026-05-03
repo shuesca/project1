@@ -3,9 +3,10 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { ArrowLeft, Shield } from "lucide-react";
+import { mediaUrl } from "@/app/media";
 
 /** Third clip in the hero reel (`page.jsx` `videos[2]`). */
-const SECURITY_BG_VIDEO = "/Fluid.mp4";
+const SECURITY_BG_VIDEO = mediaUrl("/Fluid.mp4");
 
 export default function SecurityPage() {
   const videoRef = useRef(null);
