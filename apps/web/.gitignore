@@ -1,0 +1,11 @@
+.DS_Store
+/node_modules/
+
+# Secrets — use .env.example as a template
+.env
+.env.local
+.env.*.local
+
+# React Router
+/.react-router/
+/build/

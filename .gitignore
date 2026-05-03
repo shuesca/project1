@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Env / secrets (never commit real tokens)
+.env
+.env.*
+!.env.example
+
+# Builds & caches
+build/
+dist/
+.react-router/
+.expo/
+.cache/
+*.tsbuildinfo
+.vitest/
+
+# OS / editor
+.DS_Store
+*.pem
+
+# Over GitHub’s 100 MB per-file limit — keep copies locally; host on Drive/CDN for production if needed
+apps/web/public/JellyFish.mp4
+apps/web/public/Sphere.mp4
+apps/web/public/drone.mp4
