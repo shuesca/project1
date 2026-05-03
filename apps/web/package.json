@@ -4,6 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "react-router dev",
+		"sync:media": "bash ../../scripts/sync-media.sh",
 		"typecheck": "react-router typegen && tsc --noEmit"
 	},
 	"dependencies": {
