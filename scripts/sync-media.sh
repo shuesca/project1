@@ -49,6 +49,10 @@ else
   rm -rf "$CACHE"
   git clone --depth 1 "$MEDIA_REPO_URL" "$CACHE"
 fi
+# Ensure Git LFS objects exist as real files (first clone can leave pointers only).
+if command -v git-lfs >/dev/null 2>&1 || git lfs version >/dev/null 2>&1; then
+  git -C "$CACHE" lfs pull 2>/dev/null || true
+fi
 
 SUBDIR="${MEDIA_SUBDIR:-}"
 FROM="$CACHE"
