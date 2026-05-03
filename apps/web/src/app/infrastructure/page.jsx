@@ -112,6 +112,38 @@ export default function InfrastructurePage() {
             </p>
           </section>
 
+          <section className="mt-8 rounded-2xl border border-blue-400/25 bg-blue-950/20 p-6 backdrop-blur-md">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-blue-200/90">
+              The renter vs. owner reality
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-white/75">
+              This is the fundamental trade-off of the modern web.
+            </p>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                <h3 className="text-sm font-semibold text-white">
+                  Wix: the renter model
+                </h3>
+                <p className="mt-3 text-sm leading-relaxed text-white/70">
+                  You get a beautiful furnished apartment. Wix handles the plumbing
+                  (hosting), security (SSL), and renovations (updates). But you cannot
+                  take the walls with you when you move; you only own the furniture:
+                  your photos and text.
+                </p>
+              </div>
+              <div className="rounded-xl border border-blue-300/20 bg-blue-500/10 p-4">
+                <h3 className="text-sm font-semibold text-white">
+                  Self-hosted / Cloudflare: the owner model
+                </h3>
+                <p className="mt-3 text-sm leading-relaxed text-white/70">
+                  You buy the land and build the house. You own every brick and wire:
+                  the code. If you do not like your hosting provider, you can pick up
+                  the entire house and move it to a different plot of land.
+                </p>
+              </div>
+            </div>
+          </section>
+
           <p className="mt-8 text-xs leading-relaxed text-white/45">
             Scope and exceptions belong in your statement of work; cardholder data
             environments are always coordinated with your processor and counsel.
